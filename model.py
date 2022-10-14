@@ -388,7 +388,7 @@ class BasicLayer(nn.Module):
         # calculate attention mask for SW-MSA
         B, C, D, H, W = x.shape
         x = rearrange(x, 'b c d h w -> b d h w c')
-        x = self.pos_block(x, D, H, W)
+        x = self.pos_block(x)
         for i, blk in enumerate(self.blocks):
             x = blk(x)
 
@@ -451,7 +451,7 @@ class BasicLayer_up(nn.Module):
 
     def forward(self, x):
         B, D, H, W, C = x.shape
-        x = self.pos_block(x, D, H, W)
+        x = self.pos_block(x)
 
         for i, blk in enumerate(self.blocks):
             if self.use_checkpoint:
