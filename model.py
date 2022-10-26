@@ -105,7 +105,7 @@ class DFormerBlock3D(nn.Module):
         norm_layer (nn.Module, optional): Normalization layer.  Default: nn.LayerNorm
     """
 
-    def __init__(self, dim, num_heads, group_size=(2, 7, 7), interval=8, lsda_flag=0,
+    def __init__(self, dim, num_heads, group_size=(2, 7, 7), interval=8, gsm=0,
                  mlp_ratio=4., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0., drop_path=0.,
                  act_layer=nn.GELU, norm_layer=nn.LayerNorm, use_checkpoint=False):
         super().__init__()
@@ -114,7 +114,7 @@ class DFormerBlock3D(nn.Module):
         self.group_size = group_size
         self.mlp_ratio = mlp_ratio
         self.use_checkpoint = use_checkpoint
-        self.lsda_flag = lsda_flag
+        self.gsm = gsm
         self.interval = interval
 
 
@@ -134,10 +134,10 @@ class DFormerBlock3D(nn.Module):
 
         if H < self.group_size[1]:
             # if group size is larger than input resolution, we don't partition group
-            self.lsda_flag = 0
+            self.gsm = 0
             self.group_size = (D, H, W)
         # pad feature maps to multiples of group size
-        size_div = self.interval if self.lsda_flag == 1 else self.group_size
+        size_div = self.interval if self.gsm == 1 else self.group_size
         if isinstance(size_div, int): size_div = to_3tuple(size_div)
         pad_l = pad_t = pad_d0 = 0
         pad_d = (size_div[0] - D % size_div[0]) % size_div[0]
@@ -155,7 +155,7 @@ class DFormerBlock3D(nn.Module):
             mask[:, :, :, -pad_r:, :] = -1
 
         # group embeddings and generate attn_mask
-        if self.lsda_flag == 0: # SDA
+        if self.gsm == 0: # LS-MSA
             Gd = size_div[0]
             Gh = size_div[1]
             Gw = size_div[2]
@@ -175,7 +175,7 @@ class DFormerBlock3D(nn.Module):
             else:
                 attn_mask = None
 
-        else: # LDA
+        else: # GS-MSA
             B, D2, H2, W2, C = x.shape
             interval_d = Dp // self.group_size[0]
             interval_h = Hp // self.group_size[1]
@@ -201,7 +201,7 @@ class DFormerBlock3D(nn.Module):
         x = self.attn(x, mask=attn_mask)
 
         # ungroup embeddings
-        if self.lsda_flag == 0:
+        if self.gsm == 0:
             x = x.reshape(B, D2 // size_div[0], H2 // size_div[1], W2 // size_div[2], size_div[0], size_div[1],
                        size_div[2], C).permute(0, 1, 4, 2, 5, 3, 6, 7).contiguous() # B, Hp//G, G, Wp//G, G, C
             x = x.view(B, D2, H2, W2, -1)
@@ -363,7 +363,7 @@ class BasicLayer(nn.Module):
                 num_heads=num_heads,
                 group_size=group_size,
                 interval=interval,
-                lsda_flag=0 if (i % 2 == 0) else 1,
+                gsm=0 if (i % 2 == 0) else 1,
                 mlp_ratio=mlp_ratio,
                 qkv_bias=qkv_bias,
                 qk_scale=qk_scale,
@@ -435,7 +435,7 @@ class BasicLayer_up(nn.Module):
                                    num_heads=num_heads,
                                    group_size=group_size,
                                    interval=interval,
-                                   lsda_flag=0 if (i % 2 == 0) else 1,
+                                   gsm=0 if (i % 2 == 0) else 1,
                                    mlp_ratio=mlp_ratio,
                                    qkv_bias=qkv_bias, qk_scale=qk_scale,
                                    drop=drop, attn_drop=attn_drop,
